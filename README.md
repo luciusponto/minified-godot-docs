@@ -15,7 +15,12 @@ The class reference is omitted; it can be accessed inside the Godot editor with 
 
 The sidebar navigation is simplified.
 
-Images are heavily compressed.
+Images are heavily compressed. Some may be unreadable.
+
+## Sidebar comparison
+| Regular | Minified |
+| --- | --- |
+| ![Original navigation bar](/images/original-navbar.png) | ![Minified navigation bar](/images/minified-navbar.png) |
 
 ## Build Setup
 ### Windows
