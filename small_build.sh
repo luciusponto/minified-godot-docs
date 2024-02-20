@@ -252,7 +252,7 @@ build () {
 	
 	godot_version=$(grep "Godot Docs" ${zip_root}/index.rst | head -n1 | sed -e "s/^[^\*]*[\*]//" | sed -e "s/[\*].*$//")
 	
-	output_file_name="godot-${output_content}-${godot_version}"
+	output_file_name="godot-${output_content}-${output_format}-${godot_version}"
 	
 	pdf_name="${output_file_name}.pdf"
 	inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
