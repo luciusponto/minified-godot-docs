@@ -1,10 +1,5 @@
 #!/bin/bash
 
-log_file=small_build.log
-
-# TODO: put those tools in PATH and remove below lines
-# SPHINX_BUILD=godot-docs-venv/Scripts/sphinx-build.exe
-
 JPG_QUALITY=50
 WEBP_QUALITY=50
 JPG_FALLBACK_THRESHOLD_KB=50
@@ -108,13 +103,12 @@ process_images () {
 		
 		if [ "$temp_path" == "" ] || [ ! -f "$temp_path" ]; then
 			echo "Error: could not process $input_path"
-			new_total=$(( new_total + original_size ))
+			# new_total=$(( new_total + original_size ))
 			overwrite_total=$(( overwrite_total + original_size ))
 			continue
 		fi
 
-		new_size=$(get_size $temp_path || echo $original_size)
-		new_total=$(( new_total + new_size ))
+		new_size=$(get_size $temp_path)
 		
 		short_path=$(basename $file)
 		# echo "$file size  - $short_path orig: $original_size; $temp_path new: $new_size"
@@ -123,9 +117,8 @@ process_images () {
 			cp $temp_path $input_path
 		else
 			echo "$seq_type: kept size: $original_size ($short_path$colors_st - $processed/$total_files)"
-			# cp $input_path $overwrite_path
 		fi
-		overwrite_size=$(get_size $overwrite_path)
+		overwrite_size=$(get_size $input_path)
 		overwrite_total=$(( overwrite_total + overwrite_size ))
 	done
 	[ -f "$temp_path" ] && rm "$temp_path"
@@ -216,7 +209,7 @@ unzip_source_zip () {
 	echo "Unzipping $source_zip..."
 
 	# unzip godot-docs zip file, overwriting any pre-existing files
-	7z x -y $1 >> $log_file 2>&1 || exit_msg_code "Error: could not unzip $source_zip. See $log_file" $ZIP_ERROR
+	7z x -y $source_zip || exit_msg_code "Error: could not unzip $source_zip." $ZIP_ERROR
 }
 
 to_lower () {
@@ -227,11 +220,11 @@ process_all_images () {
 	
 	temp_png=./tmp1.png
 
-	# process_images png
+	process_images png
 	process_images gif
-	# process_images webp
-	# process_images jpg
-	# process_images jpeg
+	process_images webp
+	process_images jpg
+	process_images jpeg
 	
 	[ -f "temp_png" ] && rm "$temp_png"
 
@@ -257,7 +250,7 @@ build () {
 	sed -i 's/"godot_is_latest": True/"godot_is_latest": False/' "${zip_root}/conf.py"
 	sed -i 's/"godot_show_article_status": True/"godot_show_article_status": False/' "${zip_root}/conf.py"
 	
-	godot_version=$(grep -ohPe "[0-9]+\.[0-9]+" ${zip_root}/index.rst | head -n1 | sed -e "s/[\*]*//" | sed -e "s/\*.*//")
+	godot_version=$(grep "Godot Docs" ${zip_root}/index.rst | head -n1 | sed -e "s/^[^\*]*[\*]//" | sed -e "s/[\*].*$//")
 	
 	output_file_name="godot-${output_content}-${godot_version}"
 	
@@ -296,10 +289,7 @@ build () {
 }
 
 prepare () {
-	echo "" > $log_file
 	script_name=$(basename "$0")
-
-	# TODO check libraries installed webp, imagemagick, sphinx, 7-zip
 
 	check_arg_count $0 1 $@ || exit_help $?
 	source_zip=$1
@@ -364,6 +354,8 @@ check_dependencies
 
 shopt -s globstar
 shopt -s nullglob
+
+# TODO add args to skip some of the stages below, except prepare 
 
 prepare $@
 clear_build_dir

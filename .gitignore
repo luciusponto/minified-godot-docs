@@ -4,3 +4,4 @@ godot-docs*
 *.bkp
 _artifacts
 _build*
+tmp*
