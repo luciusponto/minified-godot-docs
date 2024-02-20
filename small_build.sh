@@ -365,11 +365,9 @@ check_dependencies
 shopt -s globstar
 shopt -s nullglob
 
-prepare $@ >(tee -a "$log_file") 2>&1
-# clear_build_dir >(tee -a "$log_file") 2>&1
-# clear_source_dir >(tee -a "$log_file") 2>&1
-# unzip_source_zip >(tee -a "$log_file") 2>&1
-# process_all_images >(tee -a "$log_file") 2>&1
-build >(tee -a "$log_file") 2>&1
-
-
+prepare $@
+clear_build_dir
+clear_source_dir
+unzip_source_zip
+process_all_images
+build

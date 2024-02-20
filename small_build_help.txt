@@ -1,0 +1,15 @@
+Usage:
+
+SCRIPT_NAME github_godot_docs.zip [options]
+
+Options:
+--content|-c=manual|classes (default = manual): output content
+--format|-f=html|epub|pdf (default = html): output format
+--quality|-q=low|med (default = low): image compression preset
+--max_res|-mr=X (default = 1024): largest image dimension allowed
+--auto_overwrite|-ao=true|false (default = false): overwrite folders without asking
+--exclude_downloads|-ed=true|false (default = false): exclude _downloads from html builds
+
+Examples:
+SCRIPT_NAME godot-docs-master.zip -content=manual -max_res=256
+

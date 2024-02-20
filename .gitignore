@@ -3,4 +3,4 @@ godot-docs*
 *.zip
 *.bkp
 _artifacts
-_build
+_build*
