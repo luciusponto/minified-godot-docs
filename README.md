@@ -25,9 +25,11 @@ The Godot documentation was created by Juan Linietsky, Ariel Manzur and the Godo
 ## Limitations
 The class reference is omitted; it can be accessed inside the Godot editor with the F1 shortcut.
 
-The sidebar navigation is simplified.
+The sidebar navigation is simplified in the html version.
 
 Images are heavily compressed. Some may be unreadable.
+
+Animations are replaced by a still image of their first frame.
 
 ## Sidebar comparison
 | Regular | Minified |
@@ -69,7 +71,7 @@ For other build options, display the help:
 
 This project produces a significant smaller build of the docs by:
 
-- Simplifying the sidebar links (by changing conf.py as below), saves ~ 438 MB
+- Simplifying the sidebar links (by changing conf.py as below), saves ~ 438 MB in the html build
 ```python
 html_theme_options = {
 # keep usual options here, then append
@@ -77,7 +79,7 @@ html_theme_options = {
 }
 ```
 
-- Removing the class reference (by changing conf.py as below), saves ~ 68 MB
+- Removing the class reference (by changing conf.py as below), saves ~ 68 MB in the html build
 ```python
 exclude_patterns = ["_build", "classes"]
 ```
