@@ -1,5 +1,7 @@
 #!/bin/bash
 
+BUILD_ROOT=_build
+
 JPG_QUALITY=50
 WEBP_QUALITY=50
 JPG_FALLBACK_THRESHOLD_KB=50
@@ -29,13 +31,24 @@ get_size () {
 
 # process_webp_image input_path tmp_path
 process_webp_image () {
+	local output_image_ext="$3"
 	seq_type=still
-	webpmux -get frame 1 $1 -o $2  2> /dev/null 1> /dev/null && seq_type=movie
+	webpmux -get frame 1 "$1" -o "$2"  2> /dev/null 1> /dev/null && seq_type=movie
+	
 	# convert to png
-	dwebp $1 -mt -o $temp_png 2> /dev/null 1> /dev/null
-	magick $temp_png -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip $temp_png >/dev/null 2>&1
-	# convert back to webp with lossy compression
-	cwebp $temp_png -mt -preset text -q $WEBP_QUALITY -o $2 2> /dev/null 1> /dev/null
+	if [ "$seq_type" == "still" ]; then
+		dwebp "$1" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+	else
+		dwebp "$2" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+	fi
+	
+	if [ "$output_image_ext" == "png" ]; then
+		process_png_image "$temp_png" "$2"
+	else
+		magick "$temp_png" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip "$temp_png" >/dev/null 2>&1
+		# convert back to webp with lossy compression
+		cwebp "$temp_png" -mt -preset text -q $WEBP_QUALITY -o "$2" 2> /dev/null 1> /dev/null
+	fi
 }
 
 # process_gif_image input_path tmp_path
@@ -71,34 +84,40 @@ process_png_image () {
 # process_images file_extension min_size_kb
 # e.g.: process_images png 30
 process_images () {
-	file_extension=$1
-	files=(./$zip_root/**/*.$file_extension)
-	total_files=${#files[@]}
-	echo Found $total_files $file_extension files
-	processed=0
-	original_total=0
-	new_total=0
-	overwrite_total=0
-	temp_path=./tmp_file.$file_extension
+	local file_extension="$1"
+	local output_file_extension="$2"
+	[ "$should_process_images" != "true" ] && [ "$should_process_images" != "$file_extension" ] && return 0
+	local files=(./$zip_root/**/*.$file_extension)
+	local total_files=${#files[@]}
+	echo -e "\nProcessing $file_extension files..."
+	local processed=0
+	local original_total=0
+	local new_total=0
+	local overwrite_total=0
+	local temp_path=./tmp_file.$output_file_extension
+	local file=""
 	for file in "${files[@]}"; do
 		processed=$(( processed + 1 ))
-		input_path=$file
-		seq_type="still"
+		if  [ $debug_max_images -gt -1 ] && [ $processed -gt $debug_max_images ]; then
+			break
+		fi
+		local input_path=$file
+		local seq_type="still"
 		case "$file_extension" in
-		   "png") process_png_image $input_path $temp_path
+		   "png") process_png_image "$input_path" "$temp_path"
 		   ;;
 			# TODO if epub, convert webp to jpg and update *.srt to reference jpg instead of webp
-		   "webp") process_webp_image $input_path $temp_path
+		   "webp") process_webp_image "$input_path" "$temp_path" "$output_file_extension"
 		   ;;
-		   "gif") process_gif_image $input_path $temp_path
+		   "gif") process_gif_image "$input_path" "$temp_path"
 		   ;;
-		   "jpg") process_jpg_image $input_path $temp_path
+		   "jpg") process_jpg_image "$input_path" "$temp_path"
 		   ;;
-		   "jpeg") process_jpg_image $input_path $temp_path
+		   "jpeg") process_jpg_image "$input_path" "$temp_path"
 		   ;;
 		esac
 		
-		original_size=$(get_size $input_path)
+		local original_size=$(get_size $input_path)
 		original_total=$(( original_total + original_size ))
 		
 		if [ "$temp_path" == "" ] || [ ! -f "$temp_path" ]; then
@@ -108,22 +127,26 @@ process_images () {
 			continue
 		fi
 
-		new_size=$(get_size $temp_path)
+		local new_size=$(get_size $temp_path)
 		
-		short_path=$(basename $file)
-		# echo "$file size  - $short_path orig: $original_size; $temp_path new: $new_size"
-		if [ "$new_size" -lt "$original_size" ]; then
+		local short_path=$(basename $file)
+		local input_dir=$(echo $file | sed -e "s/\/[^\/]*$//")
+		local short_path_no_ext=$(echo $short_path | sed -e "s/\.[^\.]*$//")
+		local output_short_path="${short_path_no_ext}.${output_file_extension}"
+		local output_path="${input_dir}/${output_short_path}"
+
+		if [ "$new_size" -lt "$original_size" ] || [ "$input_path" != "$output_path" ]; then
 			echo "$seq_type: $original_size => $new_size ($short_path$colors_st - $processed/$total_files)"
-			cp $temp_path $input_path
+			cp $temp_path $output_path
 		else
 			echo "$seq_type: kept size: $original_size ($short_path$colors_st - $processed/$total_files)"
 		fi
-		overwrite_size=$(get_size $input_path)
+		local overwrite_size=$(get_size $output_path)
 		overwrite_total=$(( overwrite_total + overwrite_size ))
 	done
 	[ -f "$temp_path" ] && rm "$temp_path"
-	diff_k=$(( original_total - overwrite_total ))
-	diff_M=$(( diff_k / 1024 ))
+	local diff_k=$(( original_total - overwrite_total ))
+	local diff_M=$(( diff_k / 1024 ))
 	echo "$original_total => $overwrite_total; diff: $diff_M MiB"
 }
 
@@ -164,7 +187,7 @@ exit_msg_code () {
 }
 
 # get_arg arg_name default_value $@(all_arguments)
-# E.g. get_arg max_res 1024 $@
+# E.g. get_arg output_format html $@
 get_arg () {
 	local arg_name=$1
 	local short_arg_name=$2
@@ -183,31 +206,64 @@ get_arg () {
 	to_lower $arg_value
 }
 
+# e.g. confirm_dir_destruction "$zip_root" "directory where zip source was unzipped" "overwrite"
+# e.g. confirm_dir_destruction "$zip_root" "directory where zip source was unzipped" "delete"
+confirm_dir_destruction () {
+	echo ""
+
+	[ "$yes_to_all" == "true" ] && return 0
+	
+	local target_dir="$1"
+	local dir_description="$2"
+	local action="$3"
+	
+	[ ! -d "${target_dir}" ] && return 0
+
+	local can_overwrite="tbd"
+
+	while [ "$can_overwrite" != "y" ] && [ "$can_overwrite" != "n" ]; do
+		read -p "About to ${action} contents of ${dir_description} (${target_dir}). Proceed? (y/n): " can_overwrite
+		can_overwrite=$(echo "$can_overwrite" | tr '[:upper:]' '[:lower:]')
+	done
+	
+	[ "$can_overwrite" == "y" ]; return $?
+}
+
 clear_dir () {
-	local dir_to_clear=$1
-	if [ -d ${dir_to_clear} ]; then
-		if [ "$auto_overwrite" == "true" ]; then
+	local dir_to_clear="$1"
+	local dir_description="$2"
+	if [ -d "$dir_to_clear" ]; then
+		if confirm_dir_destruction "$dir_to_clear" "$dir_description" "delete"; then
 			echo "Deleting ${dir_to_clear}..." && rm -rf "$dir_to_clear"
 		else
-			exit_msg_code "Aborted: cannot clear directory $dir_to_clear. Remove it manually or run with --auto-overwrite=true" $CANNOT_OVERWRITE
+			echo "Aborted: cannot clear directory $dir_to_clear. Remove it manually or run with --auto-overwrite=true" && exit $CANNOT_OVERWRITE
 		fi
 	fi
-	return 0
 }
 
 clear_build_dir () {
-	clear_dir ${BUILD_ROOT}
+	[ "$should_clear_build_dir" != "true" ] && return 0
+	clear_dir "${BUILD_ROOT}"  "build directory"
 	return $?
 }
 
 clear_source_dir () {
-	clear_dir $zip_root
+	[ "$should_clear_source" != "true" ] && return 0
+	clear_dir "$zip_root" "directory where zip source was unzipped"
 	return $?
 }
 
 unzip_source_zip () {
-	echo "Unzipping $source_zip..."
+	[ "$should_unzip_source" != "true" ] && return 0
+	
+	echo ""
+	
+	if [ -d "${zip_root}" ] && ! confirm_dir_destruction "${zip_root}" "directory where zip source was unzipped" "overwrite"; then
+		echo "Aborted: cannot overwrite directory ${zip_root}." && exit $CANNOT_OVERWRITE
+	fi
 
+	echo -e "\nUnzipping $source_zip..."
+	
 	# unzip godot-docs zip file, overwriting any pre-existing files
 	7z x -y $source_zip || exit_msg_code "Error: could not unzip $source_zip." $ZIP_ERROR
 }
@@ -217,23 +273,42 @@ to_lower () {
 }
 
 process_all_images () {
+	[ "$should_process_images" == "false" ] && return 0
 	
 	temp_png=./tmp1.png
 
-	process_images png
-	process_images gif
-	process_images webp
-	process_images jpg
-	process_images jpeg
+	process_images png png
+	process_images gif gif
+	process_images jpg jpg
+	process_images jpeg jpeg
+	if [ "$output_format" == "epub" ]; then
+		# epub has patchy webp compatibility. Replace webp images with png images so that epub
+		process_images webp png
+	else
+		process_images webp webp
+	fi
 	
 	[ -f "temp_png" ] && rm "$temp_png"
 
 }
 
 build () {
+	[ "$should_build" != "true" ] && return 0
+	local conf_file="${zip_root}/conf.py"
+	local conf_backup="${zip_root}/conf.orig.py"
+	local index_file="${zip_root}/index.rst"
+	local index_backup="${zip_root}/index.rst.bkp"
 	local exclude_patterns_string="["
 	local exclude_folder
 	
+	# create backups
+	[ ! -f "$conf_backup" ] && cp "$conf_file" "$conf_backup"
+	[ ! -f "$index_backup" ] && cp "$index_file" "$index_backup"
+	
+	# restore backups
+	cp "$conf_backup" "$conf_file"
+	cp "$index_backup" "$index_file"
+		
 	for exclude_folder in $exclude_patterns; do
 		exclude_patterns_string="$exclude_patterns_string\"$exclude_folder\", "
 	done
@@ -241,24 +316,41 @@ build () {
 	exclude_patterns_string=$(echo "$exclude_patterns_string" | sed -e "s/\,[ ]*$/\]/")
 
 	# Exclude directories according to building manual or class reference
-	sed -i "s/exclude_patterns \=.*/exclude_patterns \=${exclude_patterns_string}/" "${zip_root}/conf.py"
+	sed -i "s/exclude_patterns \=.*/exclude_patterns \=${exclude_patterns_string}/" "$conf_file"
 	
 	# Enable collapse_navigation to greatly reduce size of html at the cost of reduced sidebar functionality
-	sed -i 's/"collapse_navigation": False/"collapse_navigation": True/' "${zip_root}/conf.py"
+	[ "$output_format" == "html" ] &&	sed -i 's/"collapse_navigation": False/"collapse_navigation": True/' "$conf_file"
 	
 	# Remove banners at the top of each page when building `latest`.
-	sed -i 's/"godot_is_latest": True/"godot_is_latest": False/' "${zip_root}/conf.py"
-	sed -i 's/"godot_show_article_status": True/"godot_show_article_status": False/' "${zip_root}/conf.py"
-	
-	godot_version=$(grep "Godot Docs" ${zip_root}/index.rst | head -n1 | sed -e "s/^[^\*]*[\*]//" | sed -e "s/[\*].*$//")
-	
-	output_file_name="godot-${output_content}-${output_format}-${godot_version}"
-	
-	pdf_name="${output_file_name}.pdf"
-	inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
-	inject_simplepdf_2="simplepdf_file_name = \"${pdf_name}\"\n\n"
+	sed -i 's/"godot_is_latest": True/"godot_is_latest": False/' "$conf_file"
+	sed -i 's/"godot_show_article_status": True/"godot_show_article_status": False/' "$conf_file"
 
-	grep -qe "simplepdf_use_weasyprint_api" "${zip_root}/conf.py" || sed -i "s/extensions = \[/${inject_simplepdf_1}${inject_simplepdf_2}extensions = \[/" "${zip_root}/conf.py"
+	local godot_version=$(grep "Godot Docs" ${zip_root}/index.rst | head -n1 | sed -e "s/^[^\*]*[\*]//" | sed -e "s/[\*].*$//" | sed -e "s/\./_/g")
+	local output_file_name="godot-${output_content}-${godot_version}"
+	
+	if [ "$output_format" == "epub" ]; then
+		# Enable table of contents in epub files
+		sed -i 's/:hidden://g' "$index_file"
+		
+		# Fix output file name
+		sed -i "s/project = \"Godot Engine\"/project = \"${output_file_name}\"/g" "$conf_file"
+
+		if [ "$process_all_images" == "true" ] || [ "$process_all_images" == "webp" ]; then
+			echo "Replacing webp references with png..."
+			# replace references to webp images with references to png images
+			rst_files=(./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst)
+			for rst_file in "${rst_files[@]}"; do
+				sed -i "s/\.webp$/\.png/g" $rst_file
+			done
+			echo "Finished."
+		fi
+	fi
+	
+	local pdf_name="${output_file_name}.pdf"
+	local inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
+	local inject_simplepdf_2="simplepdf_file_name = \"${pdf_name}\"\n\n"
+
+	grep -qe "simplepdf_use_weasyprint_api" "$conf_file" || sed -i "s/extensions = \[/${inject_simplepdf_1}${inject_simplepdf_2}extensions = \[/" "$conf_file"
 
 	sphinx-build -M $sphinx_builder "$zip_root" $BUILD_OUTPUT_PATH
 	
@@ -268,7 +360,7 @@ build () {
 
 	
 	if  [ "$output_format" == "html" ]; then
-		zip_file="${artifact_dir}/${output_file_name}.zip"
+		local zip_file="${artifact_dir}/${output_file_name}-html.zip"
 		[ -f "$zip_file" ] && rm "$zip_file"
 		cd _build/html/${output_content}
 		files=(html/*)
@@ -281,9 +373,11 @@ build () {
 		done
 		cd ${initial_dir}
 	elif [ "$output_format" == "epub" ] || [ "$output_format" == "pdf" ]; then
+		local artifact_file_name="${output_file_name}.${output_format}"
+		local artifact_origin="${BUILD_OUTPUT_PATH}/${sphinx_builder}/${artifact_file_name}"
+		local artifact_destination="$artifact_dir/${artifact_file_name}"
 		echo "Moving $output_format to ${artifact_dir}..."
-		artifact_file_glob="${BUILD_OUTPUT_PATH}/${sphinx_builder}/*.${output_format}"
-		mv $artifact_file_glob "$artifact_dir"
+		cp "$artifact_origin" "$artifact_destination"
 	fi
 
 }
@@ -299,13 +393,16 @@ prepare () {
 
 	output_content=$(get_arg content c manual $@)
 	output_format=$(get_arg format f html $@)
-	image_quality=$(get_arg quality q low $@)
-	max_res=$(get_arg max_res mr 1024 $@)
-	auto_overwrite=$(get_arg auto_overwrite ao false $@)
-	exclude_downloads=$(get_arg exclude_downloads ed false $@)
-	sphinx_builder=""
+	yes_to_all=$(get_arg yes-to-all y false $@)
+	exclude_downloads=$(get_arg exclude-downloads ed false $@)
+	should_clear_source_dir=$(get_arg clear-source-dir csd true $@)
+	should_unzip_source=$(get_arg unzip-source us true $@)
+	should_process_images=$(get_arg process-images pi true $@)
+	should_clear_build_dir=$(get_arg clear-build-dir cbd true $@)
+	should_build=$(get_arg build b true $@)
+	debug_max_images=$(get_arg debug-max-images dmi -1 $@)
 	
-	local BUILD_ROOT=_build
+	sphinx_builder=""
 	
 	if [ "$output_format" == "html" ]; then
 		sphinx_builder=html
@@ -327,14 +424,18 @@ prepare () {
 		exclude_patterns="_build about community contributing getting_started tutorials"
 	elif [ "$output_content" == "about" ]; then
 		exclude_patterns="_build classes community contributing getting_started tutorials"
+	elif [ "$output_content" == "all" ]; then
+		exclude_patterns="_build"
 	else
 		exit_msg_code "Invalid output_content: $output_content" $INVALID_ARGUMENT
 	fi
 	
-	echo -e "Running with:\n\toutput_content=$output_content\n\toutput_format=$output_format"
-	echo -e "\timage_quality=$image_quality\n\tmax_res=$max_res\n\tauto_overwrite=$auto_overwrite\n\texclude_downloads=$exclude_downloads"
-	echo ""
-
+	echo "Running with:"
+	for run_option in output_content output_format yes_to_all exclude_downloads should_clear_source_dir should_unzip_source should_process_images should_clear_build_dir should_build debug_max_images; do
+		option_value=$(eval "echo \$$run_option")
+		echo -e "\t${run_option}: ${option_value}"
+	done
+	
 	zip_root=$(get_zip_root_dir $source_zip)
 	
 }
@@ -355,11 +456,9 @@ check_dependencies
 shopt -s globstar
 shopt -s nullglob
 
-# TODO add args to skip some of the stages below, except prepare 
-
 prepare $@
-clear_build_dir
 clear_source_dir
+clear_build_dir
 unzip_source_zip
 process_all_images
 build

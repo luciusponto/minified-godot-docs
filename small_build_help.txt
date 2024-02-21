@@ -3,12 +3,19 @@ Usage:
 SCRIPT_NAME github_godot_docs.zip [options]
 
 Options:
---content|-c=manual|classes (default = manual): output content
+--content|-c=manual|classes|all (default = manual): output content
 --format|-f=html|epub|pdf (default = html): output format
---quality|-q=low|med (default = low): image compression preset
---max_res|-mr=X (default = 1024): largest image dimension allowed
---auto_overwrite|-ao=true|false (default = false): overwrite folders without asking
---exclude_downloads|-ed=true|false (default = false): exclude _downloads from html builds
+--yes-to-all|-y=true|false (default = false): answers yes to everything for unattended builds
+--exclude-downloads|-ed=true|false (default = false): exclude _downloads from html builds
+--clear-source-dir|-csd=true|false (default = true): run step to clear unzipped source directory
+--unzip-source|-us=true|false (default = true): run step to unzip source file
+--process-images|-pi=true|false|png|webp|gif|jpg (default = true): choose which images to process (true for all)
+--clear-build-dir|-cbd=true|false (default = true): run step to clear build directory
+--build|-b=true|false (default = true): run step to build docs
+--debug-max-images|-dmi=N (default = -1): process a maximum of N images of each type
+
+
+Note: the steps of the process are: clear source dir, unzip source, process images, clear build dir, build.
 
 Examples:
 SCRIPT_NAME godot-docs-master.zip -content=manual -max_res=256
