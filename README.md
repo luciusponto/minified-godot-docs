@@ -46,7 +46,7 @@ If you want to build pdf's, you also need these:
 - To build the manual in html format:
 ```sh
 source ./godot-docs-venv/Scripts/activate
-./small_build.sh [zip path] -f=html -c=manual -ao=true
+./small_build.sh [zip path] --format=html --content=manual --yes-to-all=true
 ```
 
 
