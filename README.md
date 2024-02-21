@@ -1,16 +1,26 @@
 ## minified-godot-docs
-Custom build of Godot manual with 40x smaller file size. Useful for offline reading, saving bandwidth, or browsing on low-end hardware.
+Custom build of Godot manual with much smaller file size. Useful for offline reading, saving bandwidth, or browsing on low-end hardware.
 
 Download the desired version from the [releases](https://github.com/luciusponto/minified-godot-docs/releases) page.
+On desktop, html works well. On mobile devices, choose epub.
 
 The Godot documentation was created by Juan Linietsky, Ariel Manzur and the Godot community under the CC BY 3.0 licence.
 
-## Size comparison - Godot 4.3:
+## Size comparison - Godot 4.2:
 
+### HTML
 | type | .zip size | decompressed size |
 | --- | --- | --- |
 | minified html manual | 23 MB | 40 MB |
 | regular html offline docs | 305 MB | 1.6 GB |
+
+### EPUB
+| type | decompressed size |
+| --- | --- |
+| minified epub manual | 18 MB |
+| regular epub offline docs | 178 MB |
+
+
 
 ## Limitations
 The class reference is omitted; it can be accessed inside the Godot editor with the F1 shortcut.
