@@ -2,25 +2,19 @@
 Custom build of Godot manual with much smaller file size. Useful for offline reading, saving bandwidth, or browsing on low-end hardware.
 
 Download the desired version from the [releases](https://github.com/luciusponto/minified-godot-docs/releases) page.
-On desktop, html works well. On mobile devices, choose epub.
+
+On desktop, html works well. On mobile devices, pdf might be a good choice.
 
 The Godot documentation was created by Juan Linietsky, Ariel Manzur and the Godot community under the CC BY 3.0 licence.
 
 ## Size comparison - Godot 4.2:
 
-### HTML
-| type | .zip size | decompressed size |
-| --- | --- | --- |
-| minified html manual | 23 MB | 40 MB |
-| regular html offline docs | 305 MB | 1.6 GB |
-
-### EPUB
 | type | decompressed size |
 | --- | --- |
+| regular html offline docs | 1.6 GB |
+| minified html manual | 40 MB |
+| minified pdf manual | 30 MB |
 | minified epub manual | 18 MB |
-| regular epub offline docs | 178 MB |
-
-
 
 ## Limitations
 The class reference is omitted; it can be accessed inside the Godot editor with the F1 shortcut.
@@ -52,13 +46,15 @@ If you want to build pdf's, you also need these:
 
 
 ## Build instructions
+
+On an old i5 desktop, the build process takes around 45 minutes.
+
 ### Windows
 - Download zip of docs repo you want to build. E.g., [master](https://github.com/godotengine/godot-docs/archive/refs/heads/master.zip).
 - Open git bash
 - To build the manual in html format:
 ```sh
-source ./godot-docs-venv/Scripts/activate
-./small_build.sh [zip path] --format=html --content=manual --yes-to-all=true
+./small_build.sh [zip path] --format=html --content=manual --yes-to-all
 ```
 
 
@@ -69,7 +65,7 @@ For other build options, display the help:
 
 ## How it works
 
-This project produces a significant smaller build of the docs by:
+This project reduces the size of the the docs through:
 
 - Simplifying the sidebar links (by changing conf.py as below), saves ~ 438 MB in the html build
 ```python
