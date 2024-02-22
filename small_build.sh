@@ -2,7 +2,7 @@
 
 BUILD_ROOT=_build
 
-JPG_QUALITY=50
+JPG_QUALITY=75
 WEBP_QUALITY=50
 JPG_FALLBACK_THRESHOLD_KB=50
 PNG_MAX_COLORS=16 # max colors per channel
@@ -271,7 +271,7 @@ get_arg () {
 	
 	local arg=""
 	
-	local new_val=$(echo $@ | grep -ohPe "--$arg_name\=[^ \=]+|--$short_arg_name\=[^ \=]+" | sed -e "s/.*\=//")
+	local new_val=$(echo $@ | grep -ohPe "--$arg_name\=[^ \=]+|-$short_arg_name\=[^ \=]+" | sed -e "s/.*\=//")
 	[ "$new_val" != "" ] && arg_value=$new_val
 	
 	# for arg in $@; do
