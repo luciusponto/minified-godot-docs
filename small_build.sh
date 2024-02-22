@@ -51,6 +51,14 @@ process_webp_image () {
 	fi
 }
 
+# compress_into_webp input_path tmp_path
+# compress_into_webp () {
+	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
+	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
+	
+	# cwebp "$1" -mt -preset text -q $WEBP_QUALITY -o "$2" 2> /dev/null 1> /dev/null
+# }
+
 # process_gif_image input_path tmp_path
 process_gif_image () {
 	[ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
@@ -63,26 +71,93 @@ process_gif_image () {
 	magick "$1[0]" +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -strip $2
 }
 
-# process_jpg_image input_path tmp_path
-process_jpg_image () {
-	[ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	[ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
+# compress_into_gif input_path tmp_path
+# compress_into_gif () {
+	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
+	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
 
-	# save only first frame of animation
-	magick $1 -resize $IMG_MAGICK_RESIZE_RES -quality $JPG_QUALITY -interlace none -strip $2
+	# magick "$1" "$2"
+# }
+
+# compress_into_jpg input_path tmp_path
+# compress_into_jpg () {
+	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
+	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
+
+	# magick $1 -resize $IMG_MAGICK_RESIZE_RES -quality $JPG_QUALITY -interlace none -strip $2
+# }
+
+# compress_into_png input_path tmp_path
+# compress_into_png () {
+	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
+	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
+	# input_png=$1
+	# output_png=$2
+	# magick $input_png +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip $output_png #>/dev/null 2>&1
+# }
+
+compress_image () {
+	[ $# -lt 3 ] && return $TOO_FEW_ARGUMENTS
+	[ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
+	local input_file="$1"
+	local output_file="$2"
+	local output_type="$3"
+
+	case "$output_type" in
+			"png")
+				magick "$input_file" +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip "$output_file" #>/dev/null 2>&1
+				;;
+			"webp")
+				cwebp "$input_file" -mt -preset text -q $WEBP_QUALITY -o "$output_file" 2> /dev/null 1> /dev/null
+				;;
+			"gif")
+				# TODO: find compression settings
+				magick "$input_file" "$output_file"
+				;;
+			"jpg")
+				magick "$input_file" -resize $IMG_MAGICK_RESIZE_RES -quality $JPG_QUALITY -interlace none -strip "$output_file"
+				;;
+		esac
 }
 
-# process_png_image input_path tmp_path
-process_png_image () {
-	[ $# -lt 2 ] && return 1
+
+# extracts first frame into png image
+# extract_frame input_path output_path input_type
+extract_first_frame () {
+	[ $# -lt 3 ] && return $TOO_FEW_ARGUMENTS
 	[ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-	input_png=$1
-	output_png=$2
-	magick $input_png +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip $output_png #>/dev/null 2>&1
+	local input_file="$1"
+	local output_file="$2"
+	local input_type="$3"
+
+	seq_type=still
+
+	case "$input_type" in
+		"webp")
+			webpmux -get frame 1 "$input_file" -o "$temp_webp"  2> /dev/null 1> /dev/null && seq_type=movie
+			# convert to png
+			if [ "$seq_type" == "still" ]; then
+				dwebp "$input_file" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+			else
+				dwebp "$temp_webp" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+			fi
+			magick "$temp_png" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip "$output_file"
+			return $?
+		;;
+		"gif")
+			local frame_count=$($MAGICK identify "$input_file" | grep -iPe "gif\[[0-9]+\]" | wc -l)
+			[ "$frame_count" != "" ] && [ $frame_count -gt 1 ] && seq_type=movie
+			# save only first frame of animation
+			magick "$input_file[0]" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip  "$output_file"
+			return $?
+		;;
+	esac
+		
+	return 1
 }
 
-# process_images file_extension min_size_kb
-# e.g.: process_images png 30
+# process_images file_extension output_file_extension
+# e.g.: process_images png png
 process_images () {
 	local file_extension="$1"
 	local output_file_extension="$2"
@@ -95,31 +170,28 @@ process_images () {
 	local new_total=0
 	local overwrite_total=0
 	local temp_path=./tmp_file.$output_file_extension
+	local single_frame=./single_frame.png
+	
 	local file=""
 	for file in "${files[@]}"; do
+	
 		processed=$(( processed + 1 ))
 		if  [ $debug_max_images -gt -1 ] && [ $processed -gt $debug_max_images ]; then
 			break
 		fi
+		
 		local input_path=$file
-		local seq_type="still"
-		case "$file_extension" in
-		   "png") process_png_image "$input_path" "$temp_path"
-		   ;;
-			# TODO if epub, convert webp to jpg and update *.srt to reference jpg instead of webp
-		   "webp") process_webp_image "$input_path" "$temp_path" "$output_file_extension"
-		   ;;
-		   "gif") process_gif_image "$input_path" "$temp_path"
-		   ;;
-		   "jpg") process_jpg_image "$input_path" "$temp_path"
-		   ;;
-		   "jpeg") process_jpg_image "$input_path" "$temp_path"
-		   ;;
-		esac
-		
 		local original_size=$(get_size $input_path)
-		original_total=$(( original_total + original_size ))
+		original_total=$(( original_total + original_size ))		
 		
+		local seq_type="still"
+
+		# extract 1st frame into image magick compatible input file
+		extract_first_frame "$input_path" "$single_frame" "$file_extension"
+		[ "$seq_type" == "still" ] && single_frame="$input_path"
+		
+		compress_image "$single_frame" "$temp_path" $output_file_extension
+	
 		if [ "$temp_path" == "" ] || [ ! -f "$temp_path" ]; then
 			echo "Error: could not process $input_path"
 			# new_total=$(( new_total + original_size ))
@@ -136,7 +208,9 @@ process_images () {
 		local output_path="${input_dir}/${output_short_path}"
 
 		if [ "$new_size" -lt "$original_size" ] || [ "$input_path" != "$output_path" ]; then
-			echo "$seq_type: $original_size => $new_size ($short_path$colors_st - $processed/$total_files)"
+			echo -n "$seq_type: $original_size => $new_size"
+			[ "$input_path" != "$output_path" ] && echo -n "; $file_extension => $output_file_extension"
+			echo " ($short_path$colors_st - $processed/$total_files)"
 			cp $temp_path $output_path
 		else
 			echo "$seq_type: kept size: $original_size ($short_path$colors_st - $processed/$total_files)"
@@ -189,6 +263,7 @@ exit_msg_code () {
 # get_arg arg_name default_value $@(all_arguments)
 # E.g. get_arg output_format html $@
 get_arg () {
+	echo -n "." 1>&2
 	local arg_name=$1
 	local short_arg_name=$2
 	local arg_value=$3
@@ -196,13 +271,16 @@ get_arg () {
 	
 	local arg=""
 	
-	for arg in $@; do
-		echo $arg | grep -e "^--$arg_name\=[^ ]" >/dev/null 2>&1 || echo $arg | grep -e "^-$short_arg_name\=[^ ]" >/dev/null 2>&1 
-		if [ $? -eq 0 ]; then
-			arg_value=$(echo "$arg" | sed -e "s/[^\=]*\=//")
-			break
-		fi
-	done
+	local new_val=$(echo $@ | grep -ohPe "--$arg_name\=[^ \=]+|--$short_arg_name\=[^ \=]+" | sed -e "s/.*\=//")
+	[ "$new_val" != "" ] && arg_value=$new_val
+	
+	# for arg in $@; do
+		# echo $arg | grep -e "^--$arg_name\=[^ ]" >/dev/null 2>&1 || echo $arg | grep -e "^-$short_arg_name\=[^ ]" >/dev/null 2>&1 
+		# if [ $? -eq 0 ]; then
+			# arg_value=$(echo "$arg" | sed -e "s/[^\=]*\=//")
+			# break
+		# fi
+	# done
 	to_lower $arg_value
 }
 
@@ -276,19 +354,15 @@ process_all_images () {
 	[ "$should_process_images" == "false" ] && return 0
 	
 	temp_png=./tmp1.png
-
-	process_images png png
-	process_images gif gif
-	process_images jpg jpg
-	process_images jpeg jpeg
-	if [ "$output_format" == "epub" ]; then
-		# epub has patchy webp compatibility. Replace webp images with png images so that epub
-		process_images webp png
-	else
-		process_images webp webp
-	fi
+	temp_webp=./tmp1.webp
 	
-	[ -f "temp_png" ] && rm "$temp_png"
+	process_images png $png_output
+	process_images gif $gif_output
+	process_images jpg $jpg_output
+	process_images webp $webp_output
+	
+	[ -f "$temp_png" ] && rm "$temp_png"
+	[ -f "$temp_webp" ] && rm "$temp_webp"
 
 }
 
@@ -307,7 +381,33 @@ build () {
 	
 	# restore backups
 	cp "$conf_backup" "$conf_file"
-	cp "$index_backup" "$index_file"
+	cp "$index_backup" "$index_file"	
+	
+	local img_ref_replacement=""
+	local img_input_ext=""
+	local img_output_ext=""
+
+	for img_input_ext in webp png jpg gif; do
+		img_output_ext=$(eval "echo \$${img_input_ext}_output")
+		# echo "img_input_ext: $img_input_ext; img_output_ext: $img_output_ext"
+		[ "$img_input_ext" != "$img_output_ext" ] && img_ref_replacement="${img_ref_replacement} -e \"s/\.${img_input_ext}$/\.${img_output_ext}/\""
+	done
+
+	processed_rst=0
+	if [ "$img_ref_replacement" != "" ]; then
+		echo -n "Fixing image references"
+		for rst_file in ./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst; do
+			# echo "sed -i $img_ref_replacement $rst_file"
+			
+			# exit 1
+
+			echo -n "."
+			eval "sed -i $img_ref_replacement $rst_file"
+			processed_rst=$(( processed_rst + 1 ))
+			# sed -i $img_ref_replacement $rst_file
+		done
+		echo ""
+	fi
 		
 	for exclude_folder in $exclude_patterns; do
 		exclude_patterns_string="$exclude_patterns_string\"$exclude_folder\", "
@@ -335,22 +435,22 @@ build () {
 		# Fix output file name
 		sed -i "s/project = \"Godot Engine\"/project = \"${output_file_name}\"/g" "$conf_file"
 
-		if [ "$process_all_images" == "true" ] || [ "$process_all_images" == "webp" ]; then
-			echo "Replacing webp references with png..."
-			# replace references to webp images with references to png images
-			rst_files=(./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst)
-			for rst_file in "${rst_files[@]}"; do
-				sed -i "s/\.webp$/\.png/g" $rst_file
-			done
-			echo "Finished."
-		fi
+	elif [ "$output_format" == "pdf" ]; then
+		local pdf_name="${output_file_name}.pdf"
+		local inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
+		local inject_simplepdf_2="simplepdf_file_name = \"${pdf_name}\"\n\n"
+		grep -qe "simplepdf_use_weasyprint_api" "$conf_file" || sed -i "s/extensions = \[/${inject_simplepdf_1}${inject_simplepdf_2}extensions = \[/" "$conf_file"
 	fi
 	
-	local pdf_name="${output_file_name}.pdf"
-	local inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
-	local inject_simplepdf_2="simplepdf_file_name = \"${pdf_name}\"\n\n"
-
-	grep -qe "simplepdf_use_weasyprint_api" "$conf_file" || sed -i "s/extensions = \[/${inject_simplepdf_1}${inject_simplepdf_2}extensions = \[/" "$conf_file"
+	# TODO: extract from if. for extension in pgn webp gif jpg replace reference if $extension != ${${extension}_output}
+	# if [ "$process_all_images" == "true" ] || [ "$process_all_images" == "webp" ]; then
+		# echo "Replacing webp references with png..."
+		# rst_files=(./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst)
+		# for rst_file in "${rst_files[@]}"; do
+			# sed -i "s/\.webp$/\.png/g" $rst_file
+		# done
+		# echo "Finished."
+	# fi	
 
 	sphinx-build -M $sphinx_builder "$zip_root" $BUILD_OUTPUT_PATH
 	
@@ -385,11 +485,12 @@ build () {
 prepare () {
 	script_name=$(basename "$0")
 
-	check_arg_count $0 1 $@ || exit_help $?
-	source_zip=$1
-
+	# check_arg_count $0 1 $@ || exit_help $?
+	source_zip="$1"
+	[ ! -f "$source_zip" ] && exit_msg_code "Error: file not found: $source_zip" $FILE_NOT_FOUND
 	echo "$source_zip" | grep -ie "^.*\.zip$" >/dev/null 2>&1 || exit_msg_code "The first argument must be a zip file" $INVALID_ARGUMENT
-	[ ! -f $source_zip ] && exit_msg_code "Error: file not found: $source_zip" $FILE_NOT_FOUND
+	
+	echo -n "Parsing args"
 
 	output_content=$(get_arg content c manual $@)
 	output_format=$(get_arg format f html $@)
@@ -401,6 +502,8 @@ prepare () {
 	should_clear_build_dir=$(get_arg clear-build-dir cbd true $@)
 	should_build=$(get_arg build b true $@)
 	debug_max_images=$(get_arg debug-max-images dmi -1 $@)
+	
+	echo ""
 	
 	sphinx_builder=""
 	
@@ -430,6 +533,17 @@ prepare () {
 		exit_msg_code "Invalid output_content: $output_content" $INVALID_ARGUMENT
 	fi
 	
+	png_output=png
+	gif_output=gif
+	jpg_output=jpg
+	webp_output=webp
+	
+	case "$output_format" in
+		"epub") webp_output=jpg ;;
+		"pdf") webp_output=jpg; gif_output=jpg; png_output=jpg;;
+	esac
+	
+	
 	echo "Running with:"
 	for run_option in output_content output_format yes_to_all exclude_downloads should_clear_source_dir should_unzip_source should_process_images should_clear_build_dir should_build debug_max_images; do
 		option_value=$(eval "echo \$$run_option")
@@ -450,6 +564,13 @@ check_dependencies () {
 		fi
 	done
 }
+
+# TODO: to get potentially smaller pdf size with higher quality, refactor process images into 2 steps:
+# 1 - frame extraction, only for webp and gif, producing uncompressed png
+# 2 - compression
+#       single function that runs magick on jpg or png input, choosing settings accordingly, and converts into the specified type (png or jpg as well)
+# 			Or, if output is webp, run another branch that calls cwebp
+# Then, change references accordingly in rst files
 
 check_dependencies
 
