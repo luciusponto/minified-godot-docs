@@ -1,15 +1,17 @@
 #!/bin/bash
 
+source godot-docs-venv/Scripts/activate
+
 BUILD_ROOT=_build
 
-JPG_QUALITY=75
+JPG_QUALITY=50
 WEBP_QUALITY=50
 JPG_FALLBACK_THRESHOLD_KB=50
 PNG_MAX_COLORS=16 # max colors per channel
 PNG_DEPTH=4 # bit-depth per channel (e.g. 4 means a maximum of 16 different colors per channel, 16^3 total different colors)
 
-# resize if image exceeds max width and/or max height, keeping aspect ratio
-IMG_MAGICK_RESIZE_RES="800x1024>"
+IMG_MAX_WIDTH=800
+IMG_MAX_HEIGHT=1024
 
 TOO_FEW_ARGUMENTS=1
 FILE_NOT_FOUND=2
@@ -29,73 +31,6 @@ get_size () {
 	ls -l --block-size=1${unit} $1 | sed -e "s/[ ][ ]*/ /g" | cut -f 5 -d " "
 }
 
-# process_webp_image input_path tmp_path
-process_webp_image () {
-	local output_image_ext="$3"
-	seq_type=still
-	webpmux -get frame 1 "$1" -o "$2"  2> /dev/null 1> /dev/null && seq_type=movie
-	
-	# convert to png
-	if [ "$seq_type" == "still" ]; then
-		dwebp "$1" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
-	else
-		dwebp "$2" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
-	fi
-	
-	if [ "$output_image_ext" == "png" ]; then
-		process_png_image "$temp_png" "$2"
-	else
-		magick "$temp_png" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip "$temp_png" >/dev/null 2>&1
-		# convert back to webp with lossy compression
-		cwebp "$temp_png" -mt -preset text -q $WEBP_QUALITY -o "$2" 2> /dev/null 1> /dev/null
-	fi
-}
-
-# compress_into_webp input_path tmp_path
-# compress_into_webp () {
-	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-	
-	# cwebp "$1" -mt -preset text -q $WEBP_QUALITY -o "$2" 2> /dev/null 1> /dev/null
-# }
-
-# process_gif_image input_path tmp_path
-process_gif_image () {
-	[ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	[ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-
-	seq_type=still
-	frame_count=$($MAGICK identify "$1" | grep -iPe "gif\[[0-9]+\]" | wc -l)
-	[ "$frame_count" != "" ] && [ $frame_count -gt 1 ] && seq_type=movie
-	# save only first frame of animation
-	magick "$1[0]" +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -strip $2
-}
-
-# compress_into_gif input_path tmp_path
-# compress_into_gif () {
-	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-
-	# magick "$1" "$2"
-# }
-
-# compress_into_jpg input_path tmp_path
-# compress_into_jpg () {
-	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-
-	# magick $1 -resize $IMG_MAGICK_RESIZE_RES -quality $JPG_QUALITY -interlace none -strip $2
-# }
-
-# compress_into_png input_path tmp_path
-# compress_into_png () {
-	# [ $# -lt 2 ] && return $TOO_FEW_ARGUMENTS
-	# [ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
-	# input_png=$1
-	# output_png=$2
-	# magick $input_png +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip $output_png #>/dev/null 2>&1
-# }
-
 compress_image () {
 	[ $# -lt 3 ] && return $TOO_FEW_ARGUMENTS
 	[ ! -f "$1" ] && echo "$0: input file does not exist: $1" >2 && return 2
@@ -105,21 +40,20 @@ compress_image () {
 
 	case "$output_type" in
 			"png")
-				magick "$input_file" +dither -resize $IMG_MAGICK_RESIZE_RES -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip "$output_file" #>/dev/null 2>&1
+				magick "$input_file" +dither -resize $img_magick_resize_res -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip "$output_file" #>/dev/null 2>&1
 				;;
 			"webp")
-				cwebp "$input_file" -mt -preset text -q $WEBP_QUALITY -o "$output_file" 2> /dev/null 1> /dev/null
+				cwebp "$input_file" -mt -preset text -q $webp_quality -o "$output_file" 2> /dev/null 1> /dev/null
 				;;
 			"gif")
 				# TODO: find compression settings
 				magick "$input_file" "$output_file"
 				;;
 			"jpg")
-				magick "$input_file" -resize $IMG_MAGICK_RESIZE_RES -quality $JPG_QUALITY -interlace none -strip "$output_file"
+				magick "$input_file" -resize $img_magick_resize_res -quality $jpg_quality -interlace none -strip "$output_file"
 				;;
 		esac
 }
-
 
 # extracts first frame into png image
 # extract_frame input_path output_path input_type
@@ -141,14 +75,14 @@ extract_first_frame () {
 			else
 				dwebp "$temp_webp" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
 			fi
-			magick "$temp_png" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip "$output_file"
+			magick "$temp_png" -resize $img_magick_resize_res -interlace none -strip "$output_file"
 			return $?
 		;;
 		"gif")
 			local frame_count=$($MAGICK identify "$input_file" | grep -iPe "gif\[[0-9]+\]" | wc -l)
 			[ "$frame_count" != "" ] && [ $frame_count -gt 1 ] && seq_type=movie
 			# save only first frame of animation
-			magick "$input_file[0]" -resize $IMG_MAGICK_RESIZE_RES -interlace none -strip  "$output_file"
+			magick "$input_file[0]" -resize $img_magick_resize_res -interlace none -strip  "$output_file"
 			return $?
 		;;
 	esac
@@ -161,10 +95,16 @@ extract_first_frame () {
 process_images () {
 	local file_extension="$1"
 	local output_file_extension="$2"
-	[ "$should_process_images" != "true" ] && [ "$should_process_images" != "$file_extension" ] && return 0
-	local files=(./$zip_root/**/*.$file_extension)
+	[ "$images_to_process" != "all" ] && [ "$images_to_process" != "$file_extension" ] && return 0
+
+	local files=()
+	local inc_pattern
+	for inc_pattern in $include_patterns; do
+		files+=(./$zip_root/$inc_pattern/**/*.$file_extension)
+	done
+
 	local total_files=${#files[@]}
-	echo -e "\nProcessing $file_extension files..."
+	echo -e "\nProcessing $file_extension files, $total_files found..."
 	local processed=0
 	local original_total=0
 	local new_total=0
@@ -174,6 +114,7 @@ process_images () {
 	
 	local file=""
 	for file in "${files[@]}"; do
+		# echo $file | sed -e "s/.*$zip_root\///"
 	
 		processed=$(( processed + 1 ))
 		if  [ $debug_max_images -gt -1 ] && [ $processed -gt $debug_max_images ]; then
@@ -260,27 +201,26 @@ exit_msg_code () {
 	exit_help $2
 }
 
-# get_arg arg_name default_value $@(all_arguments)
+# get_arg arg_name default_value is_toggle $@(all_arguments)
 # E.g. get_arg output_format html $@
 get_arg () {
 	echo -n "." 1>&2
 	local arg_name=$1
 	local short_arg_name=$2
 	local arg_value=$3
-	shift 4
+	local is_toggle=$4
+	shift 5
 	
-	local arg=""
+	local new_val=""
 	
-	local new_val=$(echo $@ | grep -ohPe "--$arg_name\=[^ \=]+|-$short_arg_name\=[^ \=]+" | sed -e "s/.*\=//")
+	if [ "$is_toggle" == "true" ]; then
+		new_val="false"
+		echo $@ | grep -qPe "--$arg_name[^\=]|-$short_arg_name[^\=]|--${arg_name}$|-${short_arg_name}$" && new_val="true"
+	else
+		new_val=$(echo $@ | grep -ohPe "--$arg_name\=[^ \=]+|-$short_arg_name\=[^ \=]+" | sed -e "s/.*\=//")
+	fi
 	[ "$new_val" != "" ] && arg_value=$new_val
-	
-	# for arg in $@; do
-		# echo $arg | grep -e "^--$arg_name\=[^ ]" >/dev/null 2>&1 || echo $arg | grep -e "^-$short_arg_name\=[^ ]" >/dev/null 2>&1 
-		# if [ $? -eq 0 ]; then
-			# arg_value=$(echo "$arg" | sed -e "s/[^\=]*\=//")
-			# break
-		# fi
-	# done
+
 	to_lower $arg_value
 }
 
@@ -320,19 +260,19 @@ clear_dir () {
 }
 
 clear_build_dir () {
-	[ "$should_clear_build_dir" != "true" ] && return 0
+	[ "$keep_build_dir" == "true" ] && return 0
 	clear_dir "${BUILD_ROOT}"  "build directory"
 	return $?
 }
 
 clear_source_dir () {
-	[ "$should_clear_source" != "true" ] && return 0
+	[ "$keep_source_dir" == "true" ] && return 0
 	clear_dir "$zip_root" "directory where zip source was unzipped"
 	return $?
 }
 
 unzip_source_zip () {
-	[ "$should_unzip_source" != "true" ] && return 0
+	[ "$dont_unzip_source" == "true" ] && return 0
 	
 	echo ""
 	
@@ -351,15 +291,17 @@ to_lower () {
 }
 
 process_all_images () {
-	[ "$should_process_images" == "false" ] && return 0
+	[ "$images_to_process" == "none" ] && return 0
 	
 	temp_png=./tmp1.png
 	temp_webp=./tmp1.webp
 	
-	process_images png $png_output
-	process_images gif $gif_output
-	process_images jpg $jpg_output
-	process_images webp $webp_output
+	local source_img_ext
+	
+	for source_img_ext in $proc_images_ext; do
+		local target_img_ext=$(eval echo "\$${source_img_ext}_output")
+		process_images $source_img_ext $target_img_ext
+	done
 	
 	[ -f "$temp_png" ] && rm "$temp_png"
 	[ -f "$temp_webp" ] && rm "$temp_webp"
@@ -367,7 +309,7 @@ process_all_images () {
 }
 
 build () {
-	[ "$should_build" != "true" ] && return 0
+	[ "$dont_build" == "true" ] && return 0
 	local conf_file="${zip_root}/conf.py"
 	local conf_backup="${zip_root}/conf.orig.py"
 	local index_file="${zip_root}/index.rst"
@@ -389,25 +331,22 @@ build () {
 
 	for img_input_ext in webp png jpg gif; do
 		img_output_ext=$(eval "echo \$${img_input_ext}_output")
-		# echo "img_input_ext: $img_input_ext; img_output_ext: $img_output_ext"
 		[ "$img_input_ext" != "$img_output_ext" ] && img_ref_replacement="${img_ref_replacement} -e \"s/\.${img_input_ext}$/\.${img_output_ext}/\""
 	done
+	
+	echo -n "Fixing image references"
 
-	processed_rst=0
-	if [ "$img_ref_replacement" != "" ]; then
-		echo -n "Fixing image references"
-		for rst_file in ./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst; do
-			# echo "sed -i $img_ref_replacement $rst_file"
-			
-			# exit 1
-
-			echo -n "."
-			eval "sed -i $img_ref_replacement $rst_file"
-			processed_rst=$(( processed_rst + 1 ))
-			# sed -i $img_ref_replacement $rst_file
-		done
-		echo ""
-	fi
+	local rst_files=()
+	local inc_pattern
+	for inc_pattern in $include_patterns; do
+		rst_files+=(./$zip_root/$inc_pattern/**/*.rst)
+	done
+	for rst_file in ${rst_files[@]}; do
+		echo -n "."
+		eval "sed -i $img_ref_replacement $rst_file"
+		processed_rst=$(( processed_rst + 1 ))
+	done
+	echo ""
 		
 	for exclude_folder in $exclude_patterns; do
 		exclude_patterns_string="$exclude_patterns_string\"$exclude_folder\", "
@@ -436,21 +375,16 @@ build () {
 		sed -i "s/project = \"Godot Engine\"/project = \"${output_file_name}\"/g" "$conf_file"
 
 	elif [ "$output_format" == "pdf" ]; then
-		local pdf_name="${output_file_name}.pdf"
-		local inject_simplepdf_1="simplepdf_use_weasyprint_api = True\n"
-		local inject_simplepdf_2="simplepdf_file_name = \"${pdf_name}\"\n\n"
-		grep -qe "simplepdf_use_weasyprint_api" "$conf_file" || sed -i "s/extensions = \[/${inject_simplepdf_1}${inject_simplepdf_2}extensions = \[/" "$conf_file"
+		grep -qe "simplepdf_use_weasyprint_api" "$conf_file"
+		if [ $? -ne 0 ]; then
+			local pdf_name="${output_file_name}.pdf"
+			local inject_simplepdf="simplepdf_use_weasyprint_api = True\n"
+			inject_simplepdf="${inject_simplepdf}simplepdf_file_name = \"${pdf_name}\"\n"
+			inject_simplepdf="${inject_simplepdf}simplepdf_theme_options = {\n\t\"nocover\": True,\n}\n"
+			inject_simplepdf="${inject_simplepdf}\n"
+			sed -i "s/\(extensions = \[\)/${inject_simplepdf}\1/" "$conf_file"
+		fi
 	fi
-	
-	# TODO: extract from if. for extension in pgn webp gif jpg replace reference if $extension != ${${extension}_output}
-	# if [ "$process_all_images" == "true" ] || [ "$process_all_images" == "webp" ]; then
-		# echo "Replacing webp references with png..."
-		# rst_files=(./$zip_root/{about,community,contributing,getting_started,tutorials}/**/*.rst)
-		# for rst_file in "${rst_files[@]}"; do
-			# sed -i "s/\.webp$/\.png/g" $rst_file
-		# done
-		# echo "Finished."
-	# fi	
 
 	sphinx-build -M $sphinx_builder "$zip_root" $BUILD_OUTPUT_PATH
 	
@@ -458,7 +392,6 @@ build () {
 	artifact_dir="${initial_dir}/_artifacts"
 	[ ! -d "$artifact_dir" ] && mkdir -p "$artifact_dir"
 
-	
 	if  [ "$output_format" == "html" ]; then
 		local zip_file="${artifact_dir}/${output_file_name}-html.zip"
 		[ -f "$zip_file" ] && rm "$zip_file"
@@ -492,16 +425,44 @@ prepare () {
 	
 	echo -n "Parsing args"
 
-	output_content=$(get_arg content c manual $@)
-	output_format=$(get_arg format f html $@)
-	yes_to_all=$(get_arg yes-to-all y false $@)
-	exclude_downloads=$(get_arg exclude-downloads ed false $@)
-	should_clear_source_dir=$(get_arg clear-source-dir csd true $@)
-	should_unzip_source=$(get_arg unzip-source us true $@)
-	should_process_images=$(get_arg process-images pi true $@)
-	should_clear_build_dir=$(get_arg clear-build-dir cbd true $@)
-	should_build=$(get_arg build b true $@)
-	debug_max_images=$(get_arg debug-max-images dmi -1 $@)
+	# get_arg long_name short_name default_value is_toggle
+	output_content=$(get_arg content c manual false $@)
+	output_format=$(get_arg format f html false $@)
+	max_width=$(get_arg max-width w $IMG_MAX_WIDTH false $@)
+	max_height=$(get_arg max-height h $IMG_MAX_HEIGHT false $@)
+	jpg_quality=$(get_arg jpeg-quality jq $JPG_QUALITY false $@)
+	webp_quality=$(get_arg webp-quality wq $WEBP_QUALITY false $@)
+	yes_to_all=$(get_arg yes-to-all y false true $@)
+	exclude_downloads=$(get_arg exclude-downloads ed false true $@)
+	keep_source_dir=$(get_arg debug-keep-source-dir dks false true $@)
+	dont_unzip_source=$(get_arg debug-dont-unzip-source ddu false true $@)
+	images_to_process=$(get_arg debug-process-images dpi all false $@)
+	keep_build_dir=$(get_arg debug-keep-build-dir dkb false true $@)
+	dont_build=$(get_arg debug-dont-build ddb false true $@)
+	keep_all=$(get_arg debug-keep-all dka false true $@)
+	debug_max_images=$(get_arg debug-max-images dmi -1 false $@)
+	
+	[ "$keep_all" == "true" ] && keep_source_dir=true && keep_build_dir=true && dont_unzip_source=true
+	
+	echo -e "\n\nRunning with:"
+	local run_option
+	for run_option in output_content output_format max_width max_height jpg_quality webp_quality images_to_process; do
+		local option_value=$(eval "echo \$$run_option")
+		echo -e "\t${run_option}: ${option_value}"
+	done
+	
+	echo ""
+	for run_option in yes_to_all exclude_downloads keep_source_dir dont_unzip_source keep_build_dir dont_build; do
+		local toggle_value=$(eval "echo \$$run_option")
+		[ "$toggle_value" == true ] && echo -e "\t${run_option}: ${toggle_value}"
+	done
+	
+	if [ "$debug_max_images" != "-1" ]; then
+		echo -e "\n\tdebug_max_images: $debug_max_images"
+	fi
+	
+	img_magick_resize_res="${max_width}x${max_height}>"
+	echo -e "\n\tImage Magick resize resolution: $img_magick_resize_res"
 	
 	echo ""
 	
@@ -518,20 +479,41 @@ prepare () {
 	fi
 	
 	BUILD_OUTPUT_PATH=${BUILD_ROOT}/${output_format}/${output_content}
-
 	
+	include_patterns=""
 	exclude_patterns=_build
+
 	if [ "$output_content" == "manual" ]; then
-		exclude_patterns="_build classes"
+		include_patterns="about community contributing getting_started tutorials"
+		# exclude_patterns="_build classes"
 	elif [ "$output_content" == "classes" ]; then
-		exclude_patterns="_build about community contributing getting_started tutorials"
+		include_patterns="classes"
+		# exclude_patterns="_build about community contributing getting_started tutorials"
 	elif [ "$output_content" == "about" ]; then
-		exclude_patterns="_build classes community contributing getting_started tutorials"
+		include_patterns="about"
+	elif [ "$output_content" == "community" ]; then
+		include_patterns="community"
+	elif [ "$output_content" == "contributing" ]; then
+		include_patterns="contributing"
+	elif [ "$output_content" == "tutorials" ]; then
+		include_patterns="tutorials/3d"
 	elif [ "$output_content" == "all" ]; then
-		exclude_patterns="_build"
+		include_patterns="classes about community contributing getting_started tutorials"
 	else
 		exit_msg_code "Invalid output_content: $output_content" $INVALID_ARGUMENT
 	fi
+	
+	local inc_folder
+	local exc_search
+	
+	for inc_folder in classes about community contributing getting_started tutorials; do
+		echo $include_patterns | grep -ohe "$inc_folder" || exclude_patterns="${exclude_patterns} $inc_folder"
+	done
+	
+	echo "Include patterns: ${include_patterns}"
+	echo "Exclude patterns: ${exclude_patterns}"
+	
+	proc_images_ext="jpg webp gif png"
 	
 	png_output=png
 	gif_output=gif
@@ -539,16 +521,9 @@ prepare () {
 	webp_output=webp
 	
 	case "$output_format" in
-		"epub") webp_output=jpg ;;
-		"pdf") webp_output=jpg; gif_output=jpg; png_output=jpg;;
+		"epub") webp_output=jpg; proc_images_ext="jpg webp gif png" ;;
+		"pdf") webp_output=jpg; gif_output=jpg; png_output=jpg; proc_images_ext="jpg webp gif png" ;;
 	esac
-	
-	
-	echo "Running with:"
-	for run_option in output_content output_format yes_to_all exclude_downloads should_clear_source_dir should_unzip_source should_process_images should_clear_build_dir should_build debug_max_images; do
-		option_value=$(eval "echo \$$run_option")
-		echo -e "\t${run_option}: ${option_value}"
-	done
 	
 	zip_root=$(get_zip_root_dir $source_zip)
 	
@@ -565,12 +540,7 @@ check_dependencies () {
 	done
 }
 
-# TODO: to get potentially smaller pdf size with higher quality, refactor process images into 2 steps:
-# 1 - frame extraction, only for webp and gif, producing uncompressed png
-# 2 - compression
-#       single function that runs magick on jpg or png input, choosing settings accordingly, and converts into the specified type (png or jpg as well)
-# 			Or, if output is webp, run another branch that calls cwebp
-# Then, change references accordingly in rst files
+# TODO: test dirhtml builder for html version to see if file sizes are properly reduced. Need to implement test when cp'ing images to detect name collisions.
 
 check_dependencies
 

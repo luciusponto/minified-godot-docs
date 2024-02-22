@@ -2,21 +2,28 @@ Usage:
 
 SCRIPT_NAME github_godot_docs.zip [options]
 
-Options:
+Regular options:
 --content|-c=manual|classes|all (default = manual): output content
 --format|-f=html|epub|pdf (default = html): output format
---yes-to-all|-y=true|false (default = false): answers yes to everything for unattended builds
---exclude-downloads|-ed=true|false (default = false): exclude _downloads from html builds
---clear-source-dir|-csd=true|false (default = true): run step to clear unzipped source directory
---unzip-source|-us=true|false (default = true): run step to unzip source file
---process-images|-pi=true|false|png|webp|gif|jpg (default = true): choose which images to process (true for all)
---clear-build-dir|-cbd=true|false (default = true): run step to clear build directory
---build|-b=true|false (default = true): run step to build docs
+--max-width|w=X (default: 800): max image width
+--max-height|h=X (default: 1024): max image width
+--yes-to-all|-y: answers yes to everything for unattended builds
+--jpeg-quality|-jq=X (default: 50): set jpg quality
+--webp-quality|-wq=X (default: 50): set webp quality
+--exclude-downloads|-ed: exclude _downloads from html builds
+
+Debug options:
+--debug-keep-source-dir|-dks: don't clear unzipped source directory
+--debug-dont-unzip-source|-ddu: skip step to unzip source file
+--debug-process-images|-dpi=all|none|png|webp|gif|jpg (default = all): choose which images to process
+--debug-keep-build-dir|-dkb: don't clear build directory
+--debug-keep-all|-dka: don't clear source and build directories and don't unzip source
+--debug-dont_build|-ddb: skip step to build docs
 --debug-max-images|-dmi=N (default = -1): process a maximum of N images of each type
 
 
-Note: the steps of the process are: clear source dir, unzip source, process images, clear build dir, build.
+Note: the steps of the process are: clear source dir, clear build dir, unzip source, process images, build.
 
 Examples:
-SCRIPT_NAME godot-docs-master.zip -content=manual -max_res=256
+SCRIPT_NAME godot-docs-master.zip -content=manual
 
