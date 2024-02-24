@@ -3,7 +3,9 @@ Custom build of Godot manual with much smaller file size. Useful for offline rea
 
 Download the desired version from the [releases](https://github.com/luciusponto/minified-godot-docs/releases) page.
 
-On desktop, html works well. On mobile devices, pdf might be a good choice.
+On desktop, html works well and has the best image quality thanks to the webp format.
+
+On mobile devices, html does not work. Pdf might be a good choice, especially when paired with a reader that can display the table of contents. Both pdf and epub use jpg images.
 
 The Godot documentation was created by Juan Linietsky, Ariel Manzur and the Godot community under the CC BY 3.0 licence.
 
@@ -32,17 +34,20 @@ Animations are replaced by a still image of their first frame.
 
 ## Image compression
 Done with libwebp for webp only and Image Magick 7 for other formats.
-The defaults below could be out of date. Double check in the small_build.sh code.
 
 ### Default settings
+> [!NOTE]
+> These could be outdated. Check the first few lines of small_build.sh for current values.
+
 jpg quality = 50
+
 webp quality = 50
 
-### Default resize resolution
-Resized keeping aspect ratio.
 Max width = 800
+
 Max height = 1024
 
+Images resized keeping aspect ratio (ImageMagick syntax WxH>).
 
 ## Build Setup
 ### Windows
@@ -95,4 +100,4 @@ exclude_patterns = ["_build", "classes"]
 ```
 
 - Making all animated gif and webp images into single frame images by extracting the 1st frame
-- Resizing and re-compressing all images
+- Resizing large images and re-compressing all images
