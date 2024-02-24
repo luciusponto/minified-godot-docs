@@ -19,6 +19,7 @@ INVALID_ARGUMENT=3
 ZIP_ERROR=4
 CANNOT_OVERWRITE=5
 DEPENDENCY_NOT_FOUND=6
+COULD_NOT_EXTRACT_FRAME=7
 
 # get_size file_path unit_letter
 # e.g. get_size foo.txt k 		# return size in kB
@@ -40,10 +41,11 @@ compress_image () {
 
 	case "$output_type" in
 			"png")
-				magick "$input_file" +dither -resize $img_magick_resize_res -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip "$output_file" #>/dev/null 2>&1
+				magick "$input_file" +dither -resize $img_magick_resize_res -colors $PNG_MAX_COLORS -depth $PNG_DEPTH -interlace none -strip "$output_file" >/dev/null 2>&1
 				;;
 			"webp")
-				cwebp "$input_file" -mt -preset text -q $webp_quality -o "$output_file" 2> /dev/null 1> /dev/null
+				echo "CI - Converting $input_file into $output_file"
+				cwebp "$input_file" -mt -preset text -q $webp_quality -o "$output_file" >/dev/null 2>&1
 				;;
 			"gif")
 				# TODO: find compression settings
@@ -63,19 +65,20 @@ extract_first_frame () {
 	local input_file="$1"
 	local output_file="$2"
 	local input_type="$3"
+	
+	echo "Extract first frame: input_file = $input_file; output_file = $output_file; input_type = $input_type"
 
 	seq_type=still
 
 	case "$input_type" in
 		"webp")
-			webpmux -get frame 1 "$input_file" -o "$temp_webp"  2> /dev/null 1> /dev/null && seq_type=movie
+			webpmux -get frame 1 "$input_file" -o "$temp_webp" >/dev/null 2>&1 && seq_type=movie
 			# convert to png
 			if [ "$seq_type" == "still" ]; then
-				dwebp "$input_file" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+				dwebp "$input_file" -mt -o "$output_file" >/dev/null 2>&1
 			else
-				dwebp "$temp_webp" -mt -o "$temp_png" 2> /dev/null 1> /dev/null
+				dwebp "$temp_webp" -mt -o "$output_file" >/dev/null 2>&1
 			fi
-			magick "$temp_png" -resize $img_magick_resize_res -interlace none -strip "$output_file"
 			return $?
 		;;
 		"gif")
@@ -87,7 +90,7 @@ extract_first_frame () {
 		;;
 	esac
 		
-	return 1
+	return $COULD_NOT_EXTRACT_FRAME
 }
 
 # process_images file_extension output_file_extension
@@ -107,14 +110,14 @@ process_images () {
 	echo -e "\nProcessing $file_extension files, $total_files found..."
 	local processed=0
 	local original_total=0
-	local new_total=0
 	local overwrite_total=0
-	local temp_path=./tmp_file.$output_file_extension
-	local single_frame=./single_frame.png
 	
 	local file=""
 	for file in "${files[@]}"; do
 		# echo $file | sed -e "s/.*$zip_root\///"
+
+		local temp_path=./tmp_file.$output_file_extension
+		local single_frame=./single_frame.png
 	
 		processed=$(( processed + 1 ))
 		if  [ $debug_max_images -gt -1 ] && [ $processed -gt $debug_max_images ]; then
@@ -128,14 +131,16 @@ process_images () {
 		local seq_type="still"
 
 		# extract 1st frame into image magick compatible input file
-		extract_first_frame "$input_path" "$single_frame" "$file_extension"
-		[ "$seq_type" == "still" ] && single_frame="$input_path"
+		if [ "$file_extension" == "webp" ] || [ "$file_extension" == "gif" ]; then
+			extract_first_frame "$input_path" "$single_frame" "$file_extension"
+		else	
+			single_frame="$input_path"
+		fi
 		
 		compress_image "$single_frame" "$temp_path" $output_file_extension
 	
 		if [ "$temp_path" == "" ] || [ ! -f "$temp_path" ]; then
 			echo "Error: could not process $input_path"
-			# new_total=$(( new_total + original_size ))
 			overwrite_total=$(( overwrite_total + original_size ))
 			continue
 		fi
@@ -151,10 +156,10 @@ process_images () {
 		if [ "$new_size" -lt "$original_size" ] || [ "$input_path" != "$output_path" ]; then
 			echo -n "$seq_type: $original_size => $new_size"
 			[ "$input_path" != "$output_path" ] && echo -n "; $file_extension => $output_file_extension"
-			echo " ($short_path$colors_st - $processed/$total_files)"
+			echo " ($short_path - $processed/$total_files)"
 			cp $temp_path $output_path
 		else
-			echo "$seq_type: kept size: $original_size ($short_path$colors_st - $processed/$total_files)"
+			echo "$seq_type: kept size: $original_size ($short_path - $processed/$total_files)"
 		fi
 		local overwrite_size=$(get_size $output_path)
 		overwrite_total=$(( overwrite_total + overwrite_size ))
@@ -325,6 +330,7 @@ build () {
 	cp "$conf_backup" "$conf_file"
 	cp "$index_backup" "$index_file"	
 	
+	# fix image references after changing image format
 	local img_ref_replacement=""
 	local img_input_ext=""
 	local img_output_ext=""
@@ -348,13 +354,13 @@ build () {
 	done
 	echo ""
 		
+	# set up which folders are excluded from build in conf.py
 	for exclude_folder in $exclude_patterns; do
 		exclude_patterns_string="$exclude_patterns_string\"$exclude_folder\", "
 	done
 	
 	exclude_patterns_string=$(echo "$exclude_patterns_string" | sed -e "s/\,[ ]*$/\]/")
 
-	# Exclude directories according to building manual or class reference
 	sed -i "s/exclude_patterns \=.*/exclude_patterns \=${exclude_patterns_string}/" "$conf_file"
 	
 	# Enable collapse_navigation to greatly reduce size of html at the cost of reduced sidebar functionality
@@ -375,11 +381,14 @@ build () {
 		sed -i "s/project = \"Godot Engine\"/project = \"${output_file_name}\"/g" "$conf_file"
 
 	elif [ "$output_format" == "pdf" ]; then
+		# Set pdf settings in conf.py
 		grep -qe "simplepdf_use_weasyprint_api" "$conf_file"
 		if [ $? -ne 0 ]; then
 			local pdf_name="${output_file_name}.pdf"
+			# Use weasyprint python api. Default is using executable and did not work.
 			local inject_simplepdf="simplepdf_use_weasyprint_api = True\n"
 			inject_simplepdf="${inject_simplepdf}simplepdf_file_name = \"${pdf_name}\"\n"
+			# Remove cover page from pdf output
 			inject_simplepdf="${inject_simplepdf}simplepdf_theme_options = {\n\t\"nocover\": True,\n}\n"
 			inject_simplepdf="${inject_simplepdf}\n"
 			sed -i "s/\(extensions = \[\)/${inject_simplepdf}\1/" "$conf_file"
@@ -393,10 +402,10 @@ build () {
 	[ ! -d "$artifact_dir" ] && mkdir -p "$artifact_dir"
 
 	if  [ "$output_format" == "html" ]; then
-		local zip_file="${artifact_dir}/${output_file_name}-html.zip"
+		local zip_file="${artifact_dir}/${output_file_name}-${sphinx_builder}.zip"
 		[ -f "$zip_file" ] && rm "$zip_file"
 		cd _build/html/${output_content}
-		files=(html/*)
+		files=($sphinx_builder/*)
 		for file in "${files[@]}"; do
 			local zip_exclusions="_sources$"
 			[ "$exclude_downloads" == "true" ] && zip_exclusions="${zip_exclusions}\|_downloads\$"
@@ -521,8 +530,9 @@ prepare () {
 	webp_output=webp
 	
 	case "$output_format" in
-		"epub") webp_output=jpg; proc_images_ext="jpg webp gif png" ;;
+		"epub") webp_output=jpg; gif_output=jpg; png_output=jpg; proc_images_ext="jpg webp gif png" ;;
 		"pdf") webp_output=jpg; gif_output=jpg; png_output=jpg; proc_images_ext="jpg webp gif png" ;;
+		"html") jpg_output=webp; gif_output=webp; png_output=webp; proc_images_ext="webp jpg gif png" ;;
 	esac
 	
 	zip_root=$(get_zip_root_dir $source_zip)
@@ -540,7 +550,7 @@ check_dependencies () {
 	done
 }
 
-# TODO: test dirhtml builder for html version to see if file sizes are properly reduced. Need to implement test when cp'ing images to detect name collisions.
+# TODO: bug - webp now works fine, but png is now broken in tutorials/UI. Probably elsewhere too.
 
 check_dependencies
 
