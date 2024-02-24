@@ -9,12 +9,12 @@ The Godot documentation was created by Juan Linietsky, Ariel Manzur and the Godo
 
 ## Size comparison - Godot 4.2:
 
-| type | decompressed size |
-| --- | --- |
-| regular html offline docs | 1.6 GB |
-| minified html manual | 40 MB |
-| minified pdf manual | 30 MB |
-| minified epub manual | 18 MB |
+| type | download size | decompressed size |
+| --- | --- | --- |
+| regular html offline docs | 305 MB | 1.6 GB |
+| minified html manual | 28 MB | 46 MB |
+| minified pdf manual | 25 MB | 30 MB |
+| minified epub manual | 20 MB | 20 MB |
 
 ## Limitations
 The class reference is omitted; it can be accessed inside the Godot editor with the F1 shortcut.
@@ -29,6 +29,20 @@ Animations are replaced by a still image of their first frame.
 | Regular | Minified |
 | --- | --- |
 | ![Original navigation bar](/images/original-navbar.png) | ![Minified navigation bar](/images/minified-navbar.png) |
+
+## Image compression
+Done with libwebp for webp only and Image Magick 7 for other formats.
+The defaults below could be out of date. Double check in the small_build.sh code.
+
+### Default settings
+jpg quality = 50
+webp quality = 50
+
+### Default resize resolution
+Resized keeping aspect ratio.
+Max width = 800
+Max height = 1024
+
 
 ## Build Setup
 ### Windows
